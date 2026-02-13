@@ -1,0 +1,160 @@
+# EdgeFolio Configuration
+# AI-Powered Stock Discovery Engine
+
+
+feature_1:
+  # ============================================
+  # MARKET SCOPE
+  # ============================================
+  market:
+    universe: "sp500"              # sp500, russell1000, custom
+    top_k: 10                      # Number of top stocks to recommend
+    prefilter_top_n: 80            # Narrow down to N candidates before deep analysis
+    tickers_url_source: "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+  # ============================================
+  # PIPELINE SETTINGS
+  # ============================================
+  pipeline:
+    mode: "llm"                    # "llm" (V1) or "agentic" (V2 - future)
+    frequency: "weekly"            # weekly, daily
+    parallel_workers: 5            # Max concurrent agent analyses
+    max_retries: 3                 # Retries on API failures
+
+  # ============================================
+  # AGENT CONFIGURATION
+  # ============================================
+  agents:
+    news:
+      enabled: true
+      lookback_days: 30
+      max_articles_per_stock: 15
+      weight: 0.30                 # Weight in final score
+
+    financial:
+      enabled: true
+      reports:
+        - "10-K"
+        - "10-Q"
+        - "earnings"
+      metrics:
+        - "revenue_growth"
+        - "profit_margins"
+        - "debt_to_equity"
+        - "free_cash_flow"
+        - "pe_ratio"
+        - "roe"
+      weight: 0.40                 # Weight in final score
+
+    technical:
+      enabled: true
+      indicators:
+        - "rsi"
+        - "macd"
+        - "bollinger_bands"
+        - "volume_trend"
+        - "sma_50"
+        - "sma_200"
+      lookback_days: 90
+      weight: 0.30                 # Weight in final score
+
+    # Future: Options flow agent (stretch goal)
+    options:
+      enabled: false
+      weight: 0.00
+
+  # ============================================
+  # LEAD AGENT (SYNTHESIZER)
+  # ============================================
+  lead_agent:
+    mode: "llm_reasoning"          # "weighted_average", "llm_reasoning"
+    min_confidence: 5.0            # Minimum score to include in top K
+    # V2 (agentic): enable follow-up questions to sub-agents
+    allow_followup: false
+
+  # ============================================
+  # SCORING
+  # ============================================
+  scoring:
+    scale_min: 0
+    scale_max: 10
+    # How to handle missing data from an agent
+    missing_data_strategy: "penalize"  # "penalize" (score=3), "skip" (exclude agent), "neutral" (score=5)
+    missing_data_default_score: 3.0
+
+  # ============================================
+  # PREFILTER RULES (fast, no LLM needed)
+  # ============================================
+  prefilter:
+    min_market_cap_billions: 5.0
+    min_avg_volume: 500000         # Minimum average daily volume
+    exclude_sectors: []            # e.g., ["Utilities", "Real Estate"]
+    # Quick signals to boost ranking in prefilter
+    signals:
+      volume_spike_threshold: 2.0  # 2x average volume = interesting
+      near_52w_low_pct: 0.15       # Within 15% of 52-week low
+      positive_earnings_surprise: true
+
+  # ============================================
+  # DATA SOURCES
+  # ============================================
+  data_sources:
+    stock_data:
+      provider: "yfinance"         # Free, reliable for daily data
+    news:
+      provider: "newsapi"          # newsapi.org (free tier: 100 req/day)
+      fallback: "finnhub"          # Backup provider
+    financials:
+      provider: "yfinance"         # Basic financials
+      sec_edgar: true              # Also pull from SEC EDGAR for 10-K/10-Q
+    # Future
+    options:
+      provider: "none"             # "unusual_whales", "cboe" (paid)
+
+  # ============================================
+  # LLM SETTINGS
+  # ============================================
+  llm:
+    provider: "anthropic"          # "anthropic", "openai"
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 2000
+    temperature: 0.3               # Low temp for analytical tasks
+    # Cost control
+    max_daily_api_calls: 500
+    max_cost_per_run_usd: 5.0
+
+  # ============================================
+  # RISK PROFILE (user-configurable)
+  # ============================================
+  risk_profile:
+    level: "moderate"              # "conservative", "moderate", "aggressive"
+    # These affect scoring weights and recommendations
+    conservative:
+      prefer_dividend: true
+      max_volatility: "low"
+      min_market_cap_billions: 50
+    moderate:
+      prefer_dividend: false
+      max_volatility: "medium"
+      min_market_cap_billions: 10
+    aggressive:
+      prefer_dividend: false
+      max_volatility: "high"
+      min_market_cap_billions: 5
+
+  # ============================================
+  # OUTPUT
+  # ============================================
+  output:
+    format: "json"                 # "json", "csv", "both"
+    save_agent_reports: true       # Save individual agent reports
+    save_dir: "outputs"
+    timestamp_format: "%Y-%m-%d_%H-%M-%S"
+
+  # ============================================
+  # API KEYS (loaded from environment variables)
+  # ============================================
+  api_keys:
+    anthropic: "${ANTHROPIC_API_KEY}"
+    newsapi: "${NEWSAPI_KEY}"
+    finnhub: "${FINNHUB_KEY}"
