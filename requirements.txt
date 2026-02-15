@@ -1,0 +1,23 @@
+# Stocky - AI-Powered Stock Discovery Engine
+# Core dependencies
+
+# LLM Provider
+anthropic>=0.34.0
+
+# Stock Data
+yfinance>=0.2.0
+pandas>=2.0.0
+
+# Data Validation
+pydantic>=2.0.0
+
+# Configuration
+pyyaml>=6.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# HTML Parsing (for Wikipedia S&P 500 list)
+lxml>=4.9.0
+html5lib>=1.1
+scm-history-item:%5Cworkspaces%5Cstocky?%7B%22repositoryId%22%3A%22scm0%22%2C%22historyItemId%22%3A%22683ca2da022ac8935972df322b75e9b32a4aee0a%22%2C%22historyItemParentId%22%3A%22391a98ecedfbd435a5ba7589acb477afc1271a13%22%2C%22historyItemDisplayId%22%3A%22683ca2d%22%7D
