@@ -1,13 +1,13 @@
 import asyncio
 import logging
 
-from agents.financial_agent import FinancialAgent
-from agents.lead_agent import LeadAgent
-from agents.news_agent import NewsAgent
-from agents.technical_agent import TechnicalAgent
-from config.config import Config
-from data.schemas import LeadAgentReport, AgentReport
-from utils.llm_client import LLMClient
+from src.agents.financial_agent import FinancialAgent
+from src.agents.lead_agent import LeadAgent
+from src.agents.news_agent import NewsAgent
+from src.agents.technical_agent import TechnicalAgent
+from src.config.config import Config
+from src.data.schemas import LeadAgentReport, AgentReport
+from src.utils.llm_client import LLMClient
 
 
 class AgentsManager:

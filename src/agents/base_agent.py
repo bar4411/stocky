@@ -54,7 +54,7 @@ class BaseAgent(ABC):
 
     def _parse_llm_response(self, response: dict, ticker: str) -> AgentReport:
         """Parse the LLM JSON response into an AgentReport."""
-        from src.models.schemas import Signal
+        from src.data.schemas import Signal
 
         # Map string signals to enum
         signal_map = {

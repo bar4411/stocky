@@ -7,7 +7,9 @@ V2 (future): Agents call fetcher methods as tools.
 
 import logging
 from datetime import datetime, timedelta
+from io import StringIO
 
+import certifi
 import yfinance as yf
 import pandas as pd
 import requests
@@ -30,15 +32,29 @@ class DataFetcher:
     # STOCK UNIVERSE
     # ============================================
 
-    def get_tickers(self) -> pd.DataFrame:
+    def get_tickers(self) -> list[str]:
         """Fetch current Index tickers list from Wikipedia."""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+
         try:
-            tables = pd.read_html(self.config.tickers_url_source)
+            response = requests.get(
+                self.config.tickers_url_source,
+                headers=headers,
+                timeout=30,
+                verify= certifi.where()  # Use updated certificates
+            )
+            response.raise_for_status()
+
+            tables = pd.read_html(StringIO(response.text))
             df = tables[0]
             tickers = df["Symbol"].str.replace(".", "-", regex=False).tolist()
             logger.info(f"Fetched {len(tickers)} {self.config.universe} tickers")
             self.n_tickers_fetched = len(tickers)
-            return self._get_tickers_daily_stats(tickers=tickers)
+            return tickers
         except Exception as e:
             logger.error(f"Failed to fetch {self.config.universe} list: {e}")
             raise

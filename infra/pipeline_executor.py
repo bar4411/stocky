@@ -17,13 +17,25 @@ class PipelineExecutor:
     def __init__(self,
              pipeline_class,
              pipeline_steps: list[str],
-             load_pipeline: bool,
-             save_pipeline: bool):
+             load_pipeline: bool = False,
+             save_pipeline: bool = False,
+             pipeline_path: str = None,
+             start_from_saved_state: bool = False,
+             save_state_on_every_step: bool = False):
 
         self.pipeline_class = pipeline_class
         self.pipeline_steps = pipeline_steps
         self.load_pipeline = load_pipeline
         self.save_pipeline = save_pipeline
+        self.pipeline_path = pipeline_path
+        self.start_from_saved_state = start_from_saved_state
+        self.save_state_on_every_step = save_state_on_every_step
+        
+        # Initialize pipeline
+        self.pipeline = self._get_pipeline(pipeline_class)
+        
+        # Validate input arguments
+        self._validate_input_args()
 
 
     def execute(self, steps):

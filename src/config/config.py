@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-CONFIG_PATH = os.environ['APP_CONFIG_PATH']
+# Default config path - can be overridden by APP_CONFIG_PATH env var
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "conf" / "conf.yaml"
+CONFIG_PATH = os.environ.get('APP_CONFIG_PATH', str(DEFAULT_CONFIG_PATH))
 
 
 @dataclass
@@ -44,56 +46,16 @@ class PrefilterConfig:
     signals: dict
 
 
-@dataclass
 class Config:
     """Main configuration object for EdgeFolio."""
-    # general:
-    start_time: float
-    universe: str
-    # Raw config dict
-    _raw: dict = field(repr=False, default_factory=dict)
-
-    # Market
-    universe: str = "sp500"
-    top_k: int = 10
-    prefilter_top_n: int = 80
-
-    # Pipeline
-    pipeline_mode: str = "llm"
-    parallel_workers: int = 5
-
-    # Agents
-    news_agent: Optional[AgentConfig] = None
-    financial_agent: Optional[AgentConfig] = None
-    technical_agent: Optional[AgentConfig] = None
-
-    # LLM
-    llm: Optional[LLMConfig] = None
-
-    # Prefilter
-    prefilter: Optional[PrefilterConfig] = None
-
-    # Lead agent
-    lead_agent_mode: str = "llm_reasoning"
-    min_confidence: float = 5.0
-
-    # Risk
-    risk_profile: str = "moderate"
-
-    # Output
-    output_format: str = "json"
-    save_agent_reports: bool = True
-    output_dir: str = "outputs"
-
-    # API Keys
-    anthropic_api_key: str = ""
-    newsapi_key: str = ""
-    finnhub_key: str = ""
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "Config":
         """Load configuration from YAML file."""
-        config_path = Path(path) if path else CONFIG_PATH
+        if path:
+            config_path = Path(path)
+        else:
+            config_path = Path(CONFIG_PATH)
 
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -101,9 +63,42 @@ class Config:
         with open(config_path, "r") as f:
             raw = yaml.safe_load(f)
 
+        # Handle feature_1 wrapper if present
+        if "feature_1" in raw:
+            raw = raw["feature_1"]
+
         config = cls(_raw=raw)
         config._parse(raw)
         return config
+    
+    def __init__(self, _raw: dict = None):
+        """Initialize Config. Use Config.load() to create from file."""
+        if _raw is None:
+            raise ValueError("Use Config.load() to create Config from file, or pass _raw dict")
+        self._raw = _raw or {}
+        self.start_time = time.time()
+        # Initialize defaults
+        self.universe = "sp500"
+        self.top_k = 10
+        self.prefilter_top_n = 80
+        self.pipeline_mode = "llm"
+        self.parallel_workers = 5
+        self.news_agent = None
+        self.financial_agent = None
+        self.technical_agent = None
+        self.llm = None
+        self.prefilter = None
+        self.lead_agent_mode = "llm_reasoning"
+        self.min_confidence = 5.0
+        self.risk_profile = "moderate"
+        self.output_format = "json"
+        self.save_agent_reports = True
+        self.output_dir = "outputs"
+        self.timestamp_format = "%Y-%m-%d_%H-%M-%S"
+        self.anthropic_api_key = ""
+        self.newsapi_key = ""
+        self.finnhub_key = ""
+        self.tickers_url_source = None
 
     def _parse(self, raw: dict) -> None:
         """Parse raw YAML dict into typed config."""
@@ -159,6 +154,7 @@ class Config:
         self.output_format = output.get("format", "json")
         self.save_agent_reports = output.get("save_agent_reports", True)
         self.output_dir = output.get("save_dir", "outputs")
+        self.timestamp_format = output.get("timestamp_format", "%Y-%m-%d_%H-%M-%S")
 
         # API Keys (resolve env vars)
         keys = raw.get("api_keys", {})

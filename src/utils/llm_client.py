@@ -6,7 +6,7 @@ Wraps Anthropic/OpenAI API calls with retry logic, cost tracking, and structured
 import json
 import logging
 from anthropic import Anthropic
-from src.config import LLMConfig
+from src.config.config import LLMConfig
 
 logger = logging.getLogger(__name__)
 
