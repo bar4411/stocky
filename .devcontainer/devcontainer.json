@@ -2,7 +2,7 @@
   "name": "Stocky - Python Data Science",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   
-  "postCreateCommand": "pip install -r requirements.txt",
+  "postCreateCommand": "python -m venv .venv && .venv/bin/pip install -r requirements.txt && echo 'export PYTHONPATH=/workspaces/stocky' >> .venv/bin/activate",
   
   "customizations": {
     "vscode": {
@@ -12,7 +12,7 @@
         "ms-toolsai.jupyter"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "/workspaces/stocky/.venv/bin/python",
         "terminal.integrated.env.linux": {
           "PYTHONPATH": "/workspaces/stocky"
         }
