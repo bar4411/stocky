@@ -2,7 +2,7 @@
   "name": "Stocky - Python Data Science",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   
-  "postCreateCommand": "python -m venv .venv && .venv/bin/pip install -r requirements.txt && echo 'export PYTHONPATH=/workspaces/stocky' >> .venv/bin/activate",
+  "postCreateCommand": "rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && echo 'export PYTHONPATH=/workspaces/stocky' >> .venv/bin/activate",
   
   "customizations": {
     "vscode": {
