@@ -2,7 +2,7 @@
   "name": "Stocky - Python Data Science",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   
-  "postCreateCommand": "pip install -r requirements.txt && pip install -e .",
+  "postCreateCommand": "pip install -r requirements.txt",
   
   "customizations": {
     "vscode": {
@@ -13,13 +13,12 @@
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "python.linting.enabled": true,
-        "python.formatting.provider": "black"
+        "terminal.integrated.env.linux": {
+          "PYTHONPATH": "/workspaces/stocky"
+        }
       }
     }
   },
   
-  "forwardPorts": [8000, 8888],
-  
-  "remoteUser": "vscode"
+  "forwardPorts": [8000, 8888]
 }
