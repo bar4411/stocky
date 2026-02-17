@@ -44,10 +44,10 @@ def main():
     try:
         # Define pipeline steps
         pipeline_steps = [
-            'fetch_tickers',
-            'run_agents',
-            'process_output',
-            'publish'
+            StocksRecommenderPipeline.fetch_tickers,
+            StocksRecommenderPipeline.run_agents,
+            StocksRecommenderPipeline.process_output,
+            StocksRecommenderPipeline.publish
         ]
         
         # Initialize PipelineExecutor

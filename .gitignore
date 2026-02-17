@@ -33,4 +33,4 @@ Thumbs.db
 # Distribution / packaging
 build/
 dist/
-*.egg-info/
+*.egg-info/.venv/
