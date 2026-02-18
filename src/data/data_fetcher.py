@@ -231,44 +231,35 @@ class DataFetcher:
 
     def get_news(self, ticker: str, company_name: str = "", days: int = 30) -> list[dict]:
         """
-        Fetch recent news articles for a stock.
+        Fetch recent news articles for a stock via yfinance.
         Returns list of dicts with: title, description, source, url, published_at
         """
-        if not self.config.newsapi_key:
-            logger.warning("NewsAPI key not set — skipping news fetch")
-            return []
-
-        # Search by ticker and company name for better results
-        query = f"{ticker} OR {company_name}" if company_name else ticker
-        from_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
         try:
-            response = requests.get(
-                "https://newsapi.org/v2/everything",
-                params={
-                    "q": query,
-                    "from": from_date,
-                    "sortBy": "relevancy",
-                    "pageSize": self.config.news_agent.max_articles_per_stock if self.config.news_agent else 15,
-                    "language": "en",
-                    "apiKey": self.config.newsapi_key,
-                },
-                timeout=10,
-            )
-            response.raise_for_status()
-            data = response.json()
+            cutoff = datetime.now() - timedelta(days=days)
+            stock = yf.Ticker(ticker)
+            articles = []
 
-            articles = [
-                {
-                    "title": a.get("title", ""),
-                    "description": a.get("description", ""),
-                    "source": a.get("source", {}).get("name", ""),
-                    "url": a.get("url", ""),
-                    "published_at": a.get("publishedAt", ""),
-                }
-                for a in data.get("articles", [])
-                if a.get("title") and "[Removed]" not in a.get("title", "")
-            ]
+            for item in stock.news or []:
+                content = item.get("content", {})
+                pub_str = content.get("pubDate", "")
+                try:
+                    pub = datetime.strptime(pub_str, "%Y-%m-%dT%H:%M:%SZ")
+                except (ValueError, TypeError):
+                    continue
+                if pub < cutoff:
+                    continue
+
+                title = content.get("title", "")
+                if not title or "[Removed]" in title:
+                    continue
+
+                articles.append({
+                    "title":        title,
+                    "description":  content.get("summary", ""),
+                    "source":       content.get("provider", {}).get("displayName", ""),
+                    "url":          content.get("canonicalUrl", {}).get("url", ""),
+                    "published_at": pub_str,
+                })
 
             logger.info(f"Fetched {len(articles)} news articles for {ticker}")
             return articles

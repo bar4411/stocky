@@ -60,35 +60,8 @@ def main():
             start_from_saved_state=False,
             save_state_on_every_step=False
         )
-        
-        # Create step functions that the executor can call
-        # The executor expects functions with __name__ attribute matching the method name
-        def create_step_function(step_name):
-            """Create a function wrapper for a pipeline step."""
-            # Capture step_name in closure
-            name = step_name
-            if name == 'run_agents':
-                # Handle async method
-                def step_func():
-                    return asyncio.run(getattr(executor.pipeline, name)())
-            else:
-                # Handle sync methods
-                def step_func():
-                    return getattr(executor.pipeline, name)()
-            
-            step_func.__name__ = name
-            return step_func
-        
-        # Create step functions for each pipeline step
-        steps_to_execute = [create_step_function(step_name) for step_name in pipeline_steps]
-        
-        # Execute pipeline steps
-        logger.info(f"Executing {len(pipeline_steps)} pipeline steps: {', '.join(pipeline_steps)}")
-        executor.execute(steps_to_execute)
-        
-        logger.info("=" * 60)
-        logger.info("Pipeline execution completed successfully")
-        logger.info("=" * 60)
+                        
+        executor.execute()
         
     except Exception as e:
         logger.error(f"Pipeline execution failed: {str(e)}", exc_info=True)

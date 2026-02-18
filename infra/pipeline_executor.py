@@ -38,9 +38,9 @@ class PipelineExecutor:
         self._validate_input_args()
 
 
-    def execute(self, steps):
+    def execute(self):
         pipeline_timer = Timer('Starting pipeline').start()
-        for step in steps:
+        for step in self.pipeline_steps:
             step_name = step.__name__
             logging.info(f'================ Executing: {step_name} ===========')
 
