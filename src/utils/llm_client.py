@@ -3,9 +3,10 @@ LLM Client for EdgeFolio.
 Wraps Anthropic/OpenAI API calls with retry logic, cost tracking, and structured output parsing.
 """
 
+import asyncio
 import json
 import logging
-from anthropic import Anthropic
+from anthropic import Anthropic, APIConnectionError as AnthropicConnectionError
 from src.config.config import LLMConfig
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class LLMClient:
         self.total_output_tokens = 0
 
         if config.provider == "anthropic":
-            self.client = Anthropic()  # Uses ANTHROPIC_API_KEY env var
+            self.client = Anthropic(api_key=config.api_key or None)
         else:
             raise ValueError(f"Unsupported LLM provider: {config.provider}")
 
@@ -49,29 +50,44 @@ class LLMClient:
         temp = temperature or self.config.temperature
         tokens = max_tokens or self.config.max_tokens
 
-        try:
-            response = self.client.messages.create(
-                model=self.config.model,
-                max_tokens=tokens,
-                temperature=temp,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-            )
+        _retry_delays = [2, 4, 8]
+        _max_attempts = len(_retry_delays) + 1
 
-            self.call_count += 1
-            self.total_input_tokens += response.usage.input_tokens
-            self.total_output_tokens += response.usage.output_tokens
+        for attempt in range(_max_attempts):
+            try:
+                response = self.client.messages.create(
+                    model=self.config.model,
+                    max_tokens=tokens,
+                    temperature=temp,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                )
 
-            logger.debug(
-                f"LLM call #{self.call_count} | "
-                f"Tokens: {response.usage.input_tokens}in/{response.usage.output_tokens}out"
-            )
+                self.call_count += 1
+                self.total_input_tokens += response.usage.input_tokens
+                self.total_output_tokens += response.usage.output_tokens
 
-            return response.content[0].text
+                logger.debug(
+                    f"LLM call #{self.call_count} | "
+                    f"Tokens: {response.usage.input_tokens}in/{response.usage.output_tokens}out"
+                )
 
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
-            raise
+                return response.content[0].text
+
+            except AnthropicConnectionError as e:
+                if attempt < _max_attempts - 1:
+                    delay = _retry_delays[attempt]
+                    logger.warning(
+                        f"Anthropic connection error (attempt {attempt + 1}/{_max_attempts}), "
+                        f"retrying in {delay}s: {e}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"LLM call failed after {_max_attempts} attempts: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"LLM call failed: {e}")
+                raise
 
     async def call_json(
         self,
