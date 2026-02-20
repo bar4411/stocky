@@ -21,7 +21,7 @@ class LLMClient:
         self.total_output_tokens = 0
 
         if config.provider == "anthropic":
-            self.client = Anthropic()  # Uses ANTHROPIC_API_KEY env var
+            self.client = Anthropic(api_key=config.api_key or None)
         else:
             raise ValueError(f"Unsupported LLM provider: {config.provider}")
 

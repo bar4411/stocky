@@ -36,6 +36,7 @@ class LLMConfig:
     temperature: float
     max_daily_api_calls: int
     max_cost_per_run_usd: float
+    api_key: str = ""
 
 
 @dataclass
@@ -121,6 +122,12 @@ class Config:
         self.financial_agent = self._parse_agent(agents.get("financial", {}))
         self.technical_agent = self._parse_agent(agents.get("technical", {}))
 
+        # API Keys (resolve env vars) — parsed before LLMConfig so api_key is available
+        keys = raw.get("api_keys", {})
+        self.anthropic_api_key = self._resolve_env(keys.get("anthropic", ""))
+        self.newsapi_key = self._resolve_env(keys.get("newsapi", ""))
+        self.finnhub_key = self._resolve_env(keys.get("finnhub", ""))
+
         # LLM
         llm = raw.get("llm", {})
         self.llm = LLMConfig(
@@ -130,6 +137,7 @@ class Config:
             temperature=llm.get("temperature", 0.3),
             max_daily_api_calls=llm.get("max_daily_api_calls", 500),
             max_cost_per_run_usd=llm.get("max_cost_per_run_usd", 5.0),
+            api_key=self.anthropic_api_key,
         )
 
         # Prefilter
@@ -155,12 +163,6 @@ class Config:
         self.save_agent_reports = output.get("save_agent_reports", True)
         self.output_dir = output.get("save_dir", "outputs")
         self.timestamp_format = output.get("timestamp_format", "%Y-%m-%d_%H-%M-%S")
-
-        # API Keys (resolve env vars)
-        keys = raw.get("api_keys", {})
-        self.anthropic_api_key = self._resolve_env(keys.get("anthropic", ""))
-        self.newsapi_key = self._resolve_env(keys.get("newsapi", ""))
-        self.finnhub_key = self._resolve_env(keys.get("finnhub", ""))
 
     def _parse_agent(self, agent_dict: dict) -> AgentConfig:
         """Parse a single agent config section."""
