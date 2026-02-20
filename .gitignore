@@ -3,6 +3,7 @@
 *.env
 env.variables
 env.variables.*
+conf/env.variables
 
 # Python
 __pycache__/
