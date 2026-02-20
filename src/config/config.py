@@ -124,7 +124,7 @@ class Config:
 
         # API Keys (resolve env vars) — resolved before LLMConfig so the key can be threaded in
         keys = raw.get("api_keys", {})
-        self.anthropic_api_key = os.environ['ANTHROPIC_API_KEY']
+        self.anthropic_api_key = os.environ['ANTHROPIC_API_KEY'].strip()
         self.newsapi_key = keys.get("newsapi", "")
         self.finnhub_key = keys.get("finnhub", "")
 
