@@ -86,7 +86,7 @@ class Config:
         self.news_agent = None
         self.financial_agent = None
         self.technical_agent = None
-        self.llm = None
+        self.llm_conf = None
         self.prefilter = None
         self.lead_agent_mode = "llm_reasoning"
         self.min_confidence = 5.0
@@ -123,7 +123,7 @@ class Config:
 
         # LLM
         llm = raw.get("llm", {})
-        self.llm = LLMConfig(
+        self.llm_conf = LLMConfig(
             provider=llm.get("provider", "anthropic"),
             model=llm.get("model", "claude-sonnet-4-20250514"),
             max_tokens=llm.get("max_tokens", 2000),
@@ -158,9 +158,9 @@ class Config:
 
         # API Keys (resolve env vars)
         keys = raw.get("api_keys", {})
-        self.anthropic_api_key = self._resolve_env(keys.get("anthropic", ""))
-        self.newsapi_key = self._resolve_env(keys.get("newsapi", ""))
-        self.finnhub_key = self._resolve_env(keys.get("finnhub", ""))
+        self.anthropic_api_key = os.environ['ANTHROPIC_API_KEY']
+        self.newsapi_key = keys.get("newsapi", "")
+        self.finnhub_key = keys.get("finnhub", "")
 
     def _parse_agent(self, agent_dict: dict) -> AgentConfig:
         """Parse a single agent config section."""
@@ -173,14 +173,6 @@ class Config:
             metrics=agent_dict.get("metrics", []),
             indicators=agent_dict.get("indicators", []),
         )
-
-    @staticmethod
-    def _resolve_env(value: str) -> str:
-        """Resolve ${ENV_VAR} to actual environment variable value."""
-        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-            env_var = value[2:-1]
-            return os.environ.get(env_var, "")
-        return value
 
     def get_agent_weights(self) -> dict[str, float]:
         """Return normalized weights for enabled agents."""

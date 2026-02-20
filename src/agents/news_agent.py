@@ -96,11 +96,4 @@ Based on these articles, provide your sentiment analysis and score.
 
         except Exception as e:
             logger.error(f"[NewsAgent] Failed for {ticker}: {e}")
-            return AgentReport(
-                agent_type=self.agent_type,
-                ticker=ticker,
-                score=self.config._raw.get("scoring", {}).get("missing_data_default_score", 3.0),
-                confidence=0.0,
-                reasoning=f"Analysis failed: {str(e)}",
-                data_quality="poor",
-            )
+            raise e

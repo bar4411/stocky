@@ -1,5 +1,6 @@
 import logging
-
+import asyncio
+import inspect
 
 from infra.base_pipeline import BasePipeline
 from infra.timer import Timer
@@ -45,7 +46,11 @@ class PipelineExecutor:
             logging.info(f'================ Executing: {step_name} ===========')
 
             timer = Timer(f'Executing {step_name}').start()
-            getattr(self.pipeline, step_name)()
+            method = getattr(self.pipeline, step_name)
+            if inspect.iscoroutinefunction(method):
+                asyncio.run(method())
+            else:
+                method()
             timer.end()
             self._save_pipeline_if_needed()
 
