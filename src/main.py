@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from infra.pipeline_executor import PipelineExecutor
-from src.pipeline import StocksRecommenderPipeline
+from src.pipeline.pipeline import StocksRecommenderPipeline
 
 
 def setup_logger():
@@ -45,7 +45,7 @@ def main():
         # Define pipeline steps
         pipeline_steps = [
             StocksRecommenderPipeline.fetch_tickers,
-            StocksRecommenderPipeline.run_agents,
+            StocksRecommenderPipeline.run_funnel,   # tournament funnel (~54 LLM calls vs ~320)
             StocksRecommenderPipeline.process_output,
             StocksRecommenderPipeline.publish
         ]
