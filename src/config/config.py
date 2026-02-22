@@ -97,6 +97,7 @@ class Config:
         self.output_dir = "outputs"
         self.timestamp_format = "%Y-%m-%d_%H-%M-%S"
         self.anthropic_api_key = ""
+        self.groq_api_key = ""
         self.newsapi_key = ""
         self.finnhub_key = ""
         self.tickers_url_source = None
@@ -122,22 +123,42 @@ class Config:
         self.financial_agent = self._parse_agent(agents.get("financial", {}))
         self.technical_agent = self._parse_agent(agents.get("technical", {}))
 
-        # API Keys (resolve env vars) — resolved before LLMConfig so the key can be threaded in
+        # API Keys — only require the active provider's key
         keys = raw.get("api_keys", {})
-        self.anthropic_api_key = os.environ['ANTHROPIC_API_KEY'].strip()
+        llm = raw.get("llm", {})
+        provider = llm.get("provider", "groq")
+
+        if provider == "anthropic":
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+            if not anthropic_key:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY environment variable is required when llm.provider is 'anthropic'"
+                )
+            self.anthropic_api_key = anthropic_key
+            active_api_key = self.anthropic_api_key
+        elif provider == "groq":
+            groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+            if not groq_key:
+                raise ValueError(
+                    "GROQ_API_KEY environment variable is required when llm.provider is 'groq'"
+                )
+            self.groq_api_key = groq_key
+            active_api_key = self.groq_api_key
+        else:
+            raise ValueError(f"Unsupported llm.provider in config: '{provider}'")
+
         self.newsapi_key = keys.get("newsapi", "")
         self.finnhub_key = keys.get("finnhub", "")
 
         # LLM
-        llm = raw.get("llm", {})
         self.llm_conf = LLMConfig(
-            provider=llm.get("provider", "anthropic"),
-            model=llm.get("model", "claude-sonnet-4-20250514"),
+            provider=provider,
+            model=llm.get("model", "llama-3.3-70b-versatile"),
             max_tokens=llm.get("max_tokens", 2000),
             temperature=llm.get("temperature", 0.3),
             max_daily_api_calls=llm.get("max_daily_api_calls", 500),
             max_cost_per_run_usd=llm.get("max_cost_per_run_usd", 5.0),
-            api_key=self.anthropic_api_key,
+            api_key=active_api_key,
         )
 
         # Prefilter
