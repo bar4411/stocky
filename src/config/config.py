@@ -47,6 +47,16 @@ class PrefilterConfig:
     signals: dict
 
 
+@dataclass
+class FunnelConfig:
+    round1_batch_size: int = 15
+    round2_batch_size: int = 10
+    round3_batch_size: int = 5
+    round1_keep_rate: float = 0.50   # fraction of entrants to survive Round 1
+    round2_keep_rate: float = 0.50   # fraction of entrants to survive Round 2
+    round3_keep_rate: float = 0.50   # fraction of entrants to survive Round 3
+
+
 class Config:
     """Main configuration object for EdgeFolio."""
 
@@ -101,6 +111,7 @@ class Config:
         self.newsapi_key = ""
         self.finnhub_key = ""
         self.tickers_url_source = None
+        self.funnel: FunnelConfig = FunnelConfig()
 
     def _parse(self, raw: dict) -> None:
         """Parse raw YAML dict into typed config."""
@@ -159,6 +170,17 @@ class Config:
             max_daily_api_calls=llm.get("max_daily_api_calls", 500),
             max_cost_per_run_usd=llm.get("max_cost_per_run_usd", 5.0),
             api_key=active_api_key,
+        )
+
+        # Funnel
+        fn = raw.get("funnel", {})
+        self.funnel = FunnelConfig(
+            round1_batch_size=fn.get("round1_batch_size", 15),
+            round2_batch_size=fn.get("round2_batch_size", 10),
+            round3_batch_size=fn.get("round3_batch_size", 5),
+            round1_keep_rate=fn.get("round1_keep_rate", 0.50),
+            round2_keep_rate=fn.get("round2_keep_rate", 0.50),
+            round3_keep_rate=fn.get("round3_keep_rate", 0.50),
         )
 
         # Prefilter

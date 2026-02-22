@@ -34,6 +34,20 @@ class StocksRecommenderPipeline:
                      if r.final_score >= self.config.min_confidence]
         self.top_pick_stocks_lead_agents = qualified[: self.config.top_k]
 
+    async def run_funnel(self):
+        """Phase 2 (funnel): Tournament funnel — ~54 LLM calls vs ~320."""
+        from pipeline.funnel import TournamentFunnel
+
+        funnel = TournamentFunnel(config=self.config)
+        reports = await funnel.run(self.stocks_data)
+
+        # Expose agents_manager so process_output() can read LLM stats unchanged
+        self.agents_manager = funnel.agents_manager
+
+        reports.sort(key=lambda r: r.final_score, reverse=True)
+        qualified = [r for r in reports if r.final_score >= self.config.min_confidence]
+        self.top_pick_stocks_lead_agents = qualified[: self.config.top_k]
+
     def process_output(self):
         # Convert start_time float to datetime
         run_date = datetime.fromtimestamp(self.config.start_time)

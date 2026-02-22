@@ -45,7 +45,7 @@ def main():
         # Define pipeline steps
         pipeline_steps = [
             StocksRecommenderPipeline.fetch_tickers,
-            StocksRecommenderPipeline.run_agents,
+            StocksRecommenderPipeline.run_funnel,   # tournament funnel (~54 LLM calls vs ~320)
             StocksRecommenderPipeline.process_output,
             StocksRecommenderPipeline.publish
         ]
