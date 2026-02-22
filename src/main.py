@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from infra.pipeline_executor import PipelineExecutor
-from src.pipeline import StocksRecommenderPipeline
+from src.pipeline.pipeline import StocksRecommenderPipeline
 
 
 def setup_logger():

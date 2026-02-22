@@ -76,9 +76,9 @@ feature_1:
   # FUNNEL PIPELINE SETTINGS
   # ============================================
   funnel:
-    round1_batch_size: 15     # stocks per LLM call in Round 1 (range 15-20)
-    round2_batch_size: 10     # stocks per LLM call in Round 2
-    round3_batch_size: 5      # stocks per LLM call in Round 3
+    round1_batch_size: 10     # stocks per LLM call in Round 1 (range 15-20)
+    round2_batch_size: 2     # stocks per LLM call in Round 2
+    round3_batch_size: 2      # stocks per LLM call in Round 3
     round1_keep_rate: 0.50    # keep top 50% after Round 1
     round2_keep_rate: 0.50    # keep top 50% after Round 2
     round3_keep_rate: 0.50    # keep top 50% after Round 3

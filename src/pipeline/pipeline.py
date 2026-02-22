@@ -6,8 +6,10 @@ from datetime import datetime
 from src.agents.agents_manager import AgentsManager
 from src.config.config import Config
 from src.data.data_fetcher import DataFetcher
-from src.data.schemas import LeadAgentReport, DiscoveryOutput, RiskLevel
+from src.data.schemas import DiscoveryOutput, RiskLevel
 from src.data.stocks_prefilter import Prefilter
+from src.pipeline.funnel import TournamentFunnel
+
 
 
 class StocksRecommenderPipeline:
@@ -22,7 +24,7 @@ class StocksRecommenderPipeline:
 
     def fetch_tickers(self):
         self.data_fetcher = DataFetcher(self.config)
-        filtered_stock_tickers = Prefilter(self.config).filter(self.data_fetcher.get_tickers())
+        filtered_stock_tickers = Prefilter(self.config).filter(self.data_fetcher.get_tickers()[:20])
         self.stocks_data = self.data_fetcher.fetch_all_data(filtered_stock_tickers)
 
     async def run_agents(self):
@@ -36,8 +38,6 @@ class StocksRecommenderPipeline:
 
     async def run_funnel(self):
         """Phase 2 (funnel): Tournament funnel — ~54 LLM calls vs ~320."""
-        from pipeline.funnel import TournamentFunnel
-
         funnel = TournamentFunnel(config=self.config)
         reports = await funnel.run(self.stocks_data)
 
