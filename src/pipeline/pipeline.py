@@ -24,7 +24,7 @@ class StocksRecommenderPipeline:
 
     def fetch_tickers(self):
         self.data_fetcher = DataFetcher(self.config)
-        filtered_stock_tickers = Prefilter(self.config).filter(self.data_fetcher.get_tickers()[:20])
+        filtered_stock_tickers = Prefilter(self.config).filter(self.data_fetcher.get_tickers()[:self.config.debug_n_stocks])
         self.stocks_data = self.data_fetcher.fetch_all_data(filtered_stock_tickers)
 
     async def run_agents(self):

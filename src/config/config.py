@@ -90,6 +90,7 @@ class Config:
         self.start_time = time.time()
         # Initialize defaults
         self.universe = "sp500"
+        self.debug_n_stocks = 5000
         self.top_k = 10
         self.prefilter_top_n = 80
         self.pipeline_mode = "llm"
@@ -116,6 +117,7 @@ class Config:
     def _parse(self, raw: dict) -> None:
         """Parse raw YAML dict into typed config."""
         self.start_time = time.time()
+        self.debug_n_stocks = raw.get('debug_n_stocks', 5000)
         # Market
         market = raw.get("market", {})
         self.universe = market.get("universe", "sp500")
