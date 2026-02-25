@@ -9,10 +9,11 @@ from src.data.data_fetcher import DataFetcher
 from src.data.schemas import DiscoveryOutput, RiskLevel
 from src.data.stocks_prefilter import Prefilter
 from src.pipeline.funnel import TournamentFunnel
+from infra.base_pipeline import BasePipeline
 
 
 
-class StocksRecommenderPipeline:
+class StocksRecommenderPipeline(BasePipeline):
 
 
     def __init__(self, config_path: str = None):
@@ -21,6 +22,16 @@ class StocksRecommenderPipeline:
         self.stocks_data = None
         self.agents_manager = None
         self.top_pick_stocks_lead_agents = None
+
+    def setup(self):
+        """Re-initialize non-picklable resources after loading from saved state."""
+        if self.agents_manager is not None:
+            self.agents_manager = AgentsManager(config=self.config)
+
+    def tear_down(self):
+        """Release non-picklable resources before saving to pickle."""
+        if self.agents_manager is not None:
+            self.agents_manager = None
 
     def fetch_tickers(self):
         self.data_fetcher = DataFetcher(self.config)
