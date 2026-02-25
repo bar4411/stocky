@@ -54,11 +54,11 @@ def main():
         executor = PipelineExecutor(
             pipeline_class=StocksRecommenderPipeline,
             pipeline_steps=pipeline_steps,
-            load_pipeline=False,  # Set to True to load from saved state
-            save_pipeline=False,  # Set to True to save pipeline state
-            pipeline_path=None,  # Path to save/load pipeline pickle
-            start_from_saved_state=False,
-            save_state_on_every_step=False
+            load_pipeline=True,
+            save_pipeline=True,
+            pipeline_path='outputs/pipeline_state.pkl',
+            start_from_saved_state=True,
+            save_state_on_every_step=True
         )
                         
         executor.execute()
