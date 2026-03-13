@@ -58,7 +58,7 @@ class PipelineExecutor:
         pipeline_timer.end()
 
     def _get_pipeline(self, pipeline_class):
-        if self.start_from_saved_state and is_file_exist(self.pipeline_path):
+        if self.load_pipeline and is_file_exist(self.pipeline_path):
             pipeline = self._load_pipeline()
             if isinstance(pipeline, BasePipeline):
                 pipeline.setup()
