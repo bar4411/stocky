@@ -1,14 +1,17 @@
 """
 LLM Client for EdgeFolio.
-Wraps Anthropic/Groq API calls with retry logic, cost tracking, and structured output parsing.
+Wraps Anthropic/Groq/Gemini API calls with retry logic, cost tracking, and structured output parsing.
+Supports a fallback chain: if the active provider hits a rate limit, the next provider is tried.
 """
 
 import asyncio
 import json
 import logging
 
-from anthropic import Anthropic, APIConnectionError as AnthropicConnectionError
-from groq import Groq, APIConnectionError as GroqConnectionError
+from anthropic import Anthropic, APIConnectionError as AnthropicConnectionError, RateLimitError as AnthropicRateLimitError
+from groq import Groq, APIConnectionError as GroqConnectionError, RateLimitError as GroqRateLimitError
+import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted as GeminiRateLimitError
 
 from src.config.config import LLMConfig
 
@@ -18,49 +21,99 @@ logger = logging.getLogger(__name__)
 # Cost per 1,000 tokens by model name. Add new models here without touching other code.
 PRICING_TABLE: dict[str, dict[str, float]] = {
     # Anthropic models
-    "claude-sonnet-4-20250514":   {"input_per_1k": 0.003,   "output_per_1k": 0.015},
-    "claude-3-5-sonnet-20241022": {"input_per_1k": 0.003,   "output_per_1k": 0.015},
-    "claude-3-haiku-20240307":    {"input_per_1k": 0.00025, "output_per_1k": 0.00125},
+    "claude-sonnet-4-20250514":   {"input_per_1k": 0.003,    "output_per_1k": 0.015},
+    "claude-3-5-sonnet-20241022": {"input_per_1k": 0.003,    "output_per_1k": 0.015},
+    "claude-3-haiku-20240307":    {"input_per_1k": 0.00025,  "output_per_1k": 0.00125},
     # Groq models
-    "llama-3.3-70b-versatile":    {"input_per_1k": 0.00059, "output_per_1k": 0.00079},
-    "llama-3.1-8b-instant":       {"input_per_1k": 0.00005, "output_per_1k": 0.00008},
-    "mixtral-8x7b-32768":         {"input_per_1k": 0.00027, "output_per_1k": 0.00027},
+    "llama-3.3-70b-versatile":    {"input_per_1k": 0.00059,  "output_per_1k": 0.00079},
+    "llama-3.1-8b-instant":       {"input_per_1k": 0.00005,  "output_per_1k": 0.00008},
+    "mixtral-8x7b-32768":         {"input_per_1k": 0.00027,  "output_per_1k": 0.00027},
+    # Gemini models
+    "gemini-1.5-flash":           {"input_per_1k": 0.000075, "output_per_1k": 0.0003},
+    "gemini-1.5-pro":             {"input_per_1k": 0.00125,  "output_per_1k": 0.005},
+    "gemini-2.0-flash":           {"input_per_1k": 0.0001,   "output_per_1k": 0.0004},
 }
 
 _FALLBACK_PRICING = {"input_per_1k": 0.003, "output_per_1k": 0.015}
 
+# Exceptions that signal a provider-level rate limit (not a transient network error)
+_RATE_LIMIT_ERRORS = (GroqRateLimitError, AnthropicRateLimitError, GeminiRateLimitError)
+# Exceptions that signal a transient connection error worth retrying
+_CONNECTION_ERRORS = (GroqConnectionError, AnthropicConnectionError)
+
+
+def _build_client(config: LLMConfig):
+    """Instantiate the correct SDK client for a given LLMConfig."""
+    if config.provider == "anthropic":
+        return Anthropic(api_key=config.api_key or None)
+    elif config.provider == "groq":
+        return Groq(api_key=config.api_key or None)
+    elif config.provider == "gemini":
+        genai.configure(api_key=config.api_key or None)
+        # Return the model name; actual model object is created per-call because
+        # google-generativeai GenerativeModel requires the system prompt at construction.
+        return config.model
+    else:
+        raise ValueError(f"Unsupported LLM provider: {config.provider}")
+
 
 class LLMClient:
-    """Wrapper around LLM API calls with cost tracking and retry logic."""
+    """Wrapper around LLM API calls with cost tracking, retry logic, and provider fallback."""
 
-    def __init__(self, config: LLMConfig):
-        self.config = config
+    def __init__(self, configs: list[LLMConfig]):
+        if not configs:
+            raise ValueError("LLMClient requires at least one LLMConfig")
+        self._configs = configs
+        self._clients = [_build_client(c) for c in configs]
+        self._active_idx = 0
+
         self.call_count = 0
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
-        if config.provider == "anthropic":
-            self.client = Anthropic(api_key=config.api_key or None)
-            self._connection_error_cls = AnthropicConnectionError
-        elif config.provider == "groq":
-            self.client = Groq(api_key=config.api_key or None)
-            self._connection_error_cls = GroqConnectionError
-        else:
-            raise ValueError(f"Unsupported LLM provider: {config.provider}")
+    # ------------------------------------------------------------------
+    # Active provider helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def config(self) -> LLMConfig:
+        """Active provider config."""
+        return self._configs[self._active_idx]
+
+    @property
+    def _client(self):
+        """Active SDK client (or model name string for Gemini)."""
+        return self._clients[self._active_idx]
+
+    def _switch_to_next_provider(self, reason: str) -> bool:
+        """Try to advance to the next provider. Returns True if successful, False if exhausted."""
+        if self._active_idx + 1 >= len(self._configs):
+            return False
+        self._active_idx += 1
+        next_cfg = self._configs[self._active_idx]
+        logger.warning(
+            f"{reason} — switching to provider {self._active_idx + 1}/{len(self._configs)}: "
+            f"{next_cfg.provider} / {next_cfg.model}"
+        )
+        return True
+
+    # ------------------------------------------------------------------
+    # Pickling support (Anthropic client holds unpicklable objects)
+    # ------------------------------------------------------------------
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        # Anthropic client holds httpx connection pools with _thread.RLock
-        # objects that cannot be pickled — exclude it and recreate on load.
-        state["client"] = None
+        state["_clients"] = None
         return state
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if self.config.provider == "anthropic":
-            self.client = Anthropic()
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.config.provider}")
+        self._clients = [_build_client(c) for c in self._configs]
+
+    # ------------------------------------------------------------------
+    # API call implementation
+    # ------------------------------------------------------------------
+
     def _do_api_call(
         self,
         temp: float,
@@ -68,10 +121,15 @@ class LLMClient:
         system_prompt: str,
         user_message: str,
     ) -> tuple[str, int, int]:
-        """Execute one synchronous API call. Returns (text, input_tokens, output_tokens)."""
-        if self.config.provider == "anthropic":
-            response = self.client.messages.create(
-                model=self.config.model,
+        """Execute one synchronous API call against the active provider.
+        Returns (text, input_tokens, output_tokens).
+        """
+        cfg = self.config
+        client = self._client
+
+        if cfg.provider == "anthropic":
+            response = client.messages.create(
+                model=cfg.model,
                 max_tokens=tokens,
                 temperature=temp,
                 system=system_prompt,
@@ -83,9 +141,9 @@ class LLMClient:
                 response.usage.output_tokens,
             )
 
-        elif self.config.provider == "groq":
-            response = self.client.chat.completions.create(
-                model=self.config.model,
+        elif cfg.provider == "groq":
+            response = client.chat.completions.create(
+                model=cfg.model,
                 max_tokens=tokens,
                 temperature=temp,
                 messages=[
@@ -99,7 +157,31 @@ class LLMClient:
                 response.usage.completion_tokens,
             )
 
-        raise ValueError(f"Unsupported LLM provider: {self.config.provider}")
+        elif cfg.provider == "gemini":
+            genai.configure(api_key=cfg.api_key or None)
+            model = genai.GenerativeModel(
+                model_name=cfg.model,
+                system_instruction=system_prompt,
+            )
+            response = model.generate_content(
+                user_message,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=tokens,
+                    temperature=temp,
+                ),
+            )
+            text = response.text
+            # Gemini usage metadata (may be None on some response types)
+            usage = getattr(response, "usage_metadata", None)
+            input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+            output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+            return text, input_tokens, output_tokens
+
+        raise ValueError(f"Unsupported LLM provider: {cfg.provider}")
+
+    # ------------------------------------------------------------------
+    # Public async interface
+    # ------------------------------------------------------------------
 
     async def call(
         self,
@@ -110,6 +192,7 @@ class LLMClient:
     ) -> str:
         """
         Make an LLM API call and return the text response.
+        On rate-limit errors, automatically switches to the next provider in the chain.
 
         Args:
             system_prompt: The system/role prompt defining agent behavior
@@ -122,44 +205,65 @@ class LLMClient:
         """
         self._check_limits()
 
-        temp = temperature or self.config.temperature
-        tokens = max_tokens or self.config.max_tokens
-
         _retry_delays = [2, 4, 8]
         _max_attempts = len(_retry_delays) + 1
 
-        for attempt in range(_max_attempts):
-            try:
-                text, input_tokens, output_tokens = self._do_api_call(
-                    temp, tokens, system_prompt, user_message
-                )
+        last_error: Exception | None = None
 
-                self.call_count += 1
-                self.total_input_tokens += input_tokens
-                self.total_output_tokens += output_tokens
+        # Outer loop: iterate over providers in the fallback chain
+        while True:
+            temp = temperature or self.config.temperature
+            tokens = max_tokens or self.config.max_tokens
 
-                logger.debug(
-                    f"LLM call #{self.call_count} | "
-                    f"Tokens: {input_tokens}in/{output_tokens}out"
-                )
-
-                return text
-
-            except self._connection_error_cls as e:
-                if attempt < _max_attempts - 1:
-                    delay = _retry_delays[attempt]
-                    logger.warning(
-                        f"{self.config.provider.capitalize()} connection error "
-                        f"(attempt {attempt + 1}/{_max_attempts}), "
-                        f"retrying in {delay}s: {e}"
+            # Inner loop: retry transient connection errors for the current provider
+            for attempt in range(_max_attempts):
+                try:
+                    text, input_tokens, output_tokens = self._do_api_call(
+                        temp, tokens, system_prompt, user_message
                     )
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error(f"LLM call failed after {_max_attempts} attempts: {e}")
+
+                    self.call_count += 1
+                    self.total_input_tokens += input_tokens
+                    self.total_output_tokens += output_tokens
+
+                    logger.debug(
+                        f"LLM call #{self.call_count} [{self.config.provider}/{self.config.model}] | "
+                        f"Tokens: {input_tokens}in/{output_tokens}out"
+                    )
+                    return text
+
+                except _RATE_LIMIT_ERRORS as e:
+                    # Rate limit — don't retry this provider, try the next one
+                    last_error = e
+                    if not self._switch_to_next_provider(
+                        f"{self.config.provider} rate limit hit"
+                    ):
+                        raise RuntimeError(
+                            "All LLM providers in the fallback chain have hit their rate limits. "
+                            f"Last error: {e}"
+                        ) from e
+                    break  # Break inner loop, outer loop will retry with new provider
+
+                except _CONNECTION_ERRORS as e:
+                    if attempt < _max_attempts - 1:
+                        delay = _retry_delays[attempt]
+                        logger.warning(
+                            f"{self.config.provider.capitalize()} connection error "
+                            f"(attempt {attempt + 1}/{_max_attempts}), "
+                            f"retrying in {delay}s: {e}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"LLM call failed after {_max_attempts} attempts: {e}")
+                        raise
+
+                except Exception as e:
+                    logger.error(f"LLM call failed: {e}")
                     raise
-            except Exception as e:
-                logger.error(f"LLM call failed: {e}")
-                raise
+            else:
+                # Inner loop completed without break — all retries exhausted for this provider
+                # (should not normally happen since connection errors re-raise on last attempt)
+                break
 
     async def call_json(
         self,
@@ -227,4 +331,6 @@ class LLMClient:
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
             "estimated_cost_usd": round(self._estimate_cost(), 4),
+            "active_provider": self.config.provider,
+            "active_model": self.config.model,
         }

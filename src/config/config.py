@@ -98,7 +98,7 @@ class Config:
         self.news_agent = None
         self.financial_agent = None
         self.technical_agent = None
-        self.llm_conf = None
+        self.llm_chain: list[LLMConfig] = []
         self.prefilter = None
         self.lead_agent_mode = "llm_reasoning"
         self.min_confidence = 5.0
@@ -136,43 +136,61 @@ class Config:
         self.financial_agent = self._parse_agent(agents.get("financial", {}))
         self.technical_agent = self._parse_agent(agents.get("technical", {}))
 
-        # API Keys — only require the active provider's key
+        # API Keys and LLM chain
         keys = raw.get("api_keys", {})
         llm = raw.get("llm", {})
-        provider = llm.get("provider", "groq")
-
-        if provider == "anthropic":
-            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-            if not anthropic_key:
-                raise ValueError(
-                    "ANTHROPIC_API_KEY environment variable is required when llm.provider is 'anthropic'"
-                )
-            self.anthropic_api_key = anthropic_key
-            active_api_key = self.anthropic_api_key
-        elif provider == "groq":
-            groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-            if not groq_key:
-                raise ValueError(
-                    "GROQ_API_KEY environment variable is required when llm.provider is 'groq'"
-                )
-            self.groq_api_key = groq_key
-            active_api_key = self.groq_api_key
-        else:
-            raise ValueError(f"Unsupported llm.provider in config: '{provider}'")
 
         self.newsapi_key = keys.get("newsapi", "")
         self.finnhub_key = keys.get("finnhub", "")
 
-        # LLM
-        self.llm_conf = LLMConfig(
-            provider=provider,
-            model=llm.get("model", "llama-3.3-70b-versatile"),
-            max_tokens=llm.get("max_tokens", 2000),
-            temperature=llm.get("temperature", 0.3),
-            max_daily_api_calls=llm.get("max_daily_api_calls", 500),
-            max_cost_per_run_usd=llm.get("max_cost_per_run_usd", 5.0),
-            api_key=active_api_key,
-        )
+        # Build provider list — supports both new list format and old single-provider format
+        _env_key_map = {
+            "groq":      "GROQ_API_KEY",
+            "gemini":    "GOOGLE_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+        }
+        _supported_providers = set(_env_key_map.keys())
+
+        if "providers" in llm:
+            raw_providers = llm["providers"]
+        else:
+            # Backward-compat: single provider block
+            raw_providers = [{"provider": llm.get("provider", "groq"), "model": llm.get("model", "llama-3.3-70b-versatile")}]
+
+        max_tokens = llm.get("max_tokens", 2000)
+        temperature = llm.get("temperature", 0.3)
+        max_daily_api_calls = llm.get("max_daily_api_calls", 500)
+        max_cost_per_run_usd = llm.get("max_cost_per_run_usd", 5.0)
+
+        import logging as _logging
+        _cfg_logger = _logging.getLogger(__name__)
+
+        self.llm_chain = []
+        for entry in raw_providers:
+            provider = entry.get("provider", "groq")
+            if provider not in _supported_providers:
+                raise ValueError(f"Unsupported llm provider: '{provider}'. Supported: {sorted(_supported_providers)}")
+            api_key = os.environ.get(_env_key_map[provider], "").strip()
+            if not api_key:
+                _cfg_logger.warning(
+                    f"Skipping provider '{provider}': {_env_key_map[provider]} environment variable not set"
+                )
+                continue
+            self.llm_chain.append(LLMConfig(
+                provider=provider,
+                model=entry.get("model", "llama-3.3-70b-versatile"),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                max_daily_api_calls=max_daily_api_calls,
+                max_cost_per_run_usd=max_cost_per_run_usd,
+                api_key=api_key,
+            ))
+
+        if not self.llm_chain:
+            configured_keys = [_env_key_map[e.get("provider", "groq")] for e in raw_providers]
+            raise ValueError(
+                f"No LLM providers are available. Set at least one of: {', '.join(configured_keys)}"
+            )
 
         # Funnel
         fn = raw.get("funnel", {})
@@ -208,6 +226,11 @@ class Config:
         self.save_agent_reports = output.get("save_agent_reports", True)
         self.output_dir = output.get("save_dir", "outputs")
         self.timestamp_format = output.get("timestamp_format", "%Y-%m-%d_%H-%M-%S")
+
+    @property
+    def llm_conf(self) -> "LLMConfig":
+        """Return the primary (first) LLMConfig for backward compatibility."""
+        return self.llm_chain[0]
 
     def _parse_agent(self, agent_dict: dict) -> AgentConfig:
         """Parse a single agent config section."""
