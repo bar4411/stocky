@@ -6,11 +6,14 @@ from datetime import datetime
 from src.agents.agents_manager import AgentsManager
 from src.config.config import Config
 from src.data.data_fetcher import DataFetcher
-from src.data.schemas import LeadAgentReport, DiscoveryOutput, RiskLevel
+from src.data.schemas import DiscoveryOutput, RiskLevel
 from src.data.stocks_prefilter import Prefilter
+from src.pipeline.funnel import TournamentFunnel
+from infra.base_pipeline import BasePipeline
 
 
-class StocksRecommenderPipeline:
+
+class StocksRecommenderPipeline(BasePipeline):
 
 
     def __init__(self, config_path: str = None):
@@ -20,9 +23,16 @@ class StocksRecommenderPipeline:
         self.agents_manager = None
         self.top_pick_stocks_lead_agents = None
 
+    def setup(self):
+        """Re-initialize non-picklable resources after loading from saved state."""
+        pass
+
+    def tear_down(self):
+        pass
+
     def fetch_tickers(self):
         self.data_fetcher = DataFetcher(self.config)
-        filtered_stock_tickers = Prefilter(self.config).filter(self.data_fetcher.get_tickers())
+        filtered_stock_tickers = Prefilter(self.config).filter(self.data_fetcher.get_tickers()[:self.config.debug_n_stocks])
         self.stocks_data = self.data_fetcher.fetch_all_data(filtered_stock_tickers)
 
     async def run_agents(self):
@@ -32,6 +42,18 @@ class StocksRecommenderPipeline:
         # Filter by minimum confidence
         qualified = [r for r in all_stocks_lead_agents
                      if r.final_score >= self.config.min_confidence]
+        self.top_pick_stocks_lead_agents = qualified[: self.config.top_k]
+
+    async def run_funnel(self):
+        """Phase 2 (funnel): Tournament funnel — ~54 LLM calls vs ~320."""
+        funnel = TournamentFunnel(config=self.config)
+        reports = await funnel.run(self.stocks_data)
+
+        # Expose agents_manager so process_output() can read LLM stats unchanged
+        self.agents_manager = funnel.agents_manager
+
+        reports.sort(key=lambda r: r.final_score, reverse=True)
+        qualified = [r for r in reports if r.final_score >= self.config.min_confidence]
         self.top_pick_stocks_lead_agents = qualified[: self.config.top_k]
 
     def process_output(self):

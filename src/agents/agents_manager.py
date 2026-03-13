@@ -14,7 +14,7 @@ class AgentsManager:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.llm_client = LLMClient(config.llm)
+        self.llm_client = LLMClient(config.llm_conf)
         self.lead_agent = LeadAgent(config=config, llm_client=self.llm_client)
         self.news_agent = NewsAgent(config=config, llm_client=self.llm_client)
         self.financial_agent = FinancialAgent(config=config, llm_client=self.llm_client)

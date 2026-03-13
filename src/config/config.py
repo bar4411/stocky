@@ -36,6 +36,7 @@ class LLMConfig:
     temperature: float
     max_daily_api_calls: int
     max_cost_per_run_usd: float
+    api_key: str = ""
 
 
 @dataclass
@@ -44,6 +45,16 @@ class PrefilterConfig:
     min_avg_volume: int
     exclude_sectors: list[str]
     signals: dict
+
+
+@dataclass
+class FunnelConfig:
+    round1_batch_size: int = 15
+    round2_batch_size: int = 10
+    round3_batch_size: int = 5
+    round1_keep_rate: float = 0.50   # fraction of entrants to survive Round 1
+    round2_keep_rate: float = 0.50   # fraction of entrants to survive Round 2
+    round3_keep_rate: float = 0.50   # fraction of entrants to survive Round 3
 
 
 class Config:
@@ -79,6 +90,7 @@ class Config:
         self.start_time = time.time()
         # Initialize defaults
         self.universe = "sp500"
+        self.debug_n_stocks = 5000
         self.top_k = 10
         self.prefilter_top_n = 80
         self.pipeline_mode = "llm"
@@ -86,7 +98,7 @@ class Config:
         self.news_agent = None
         self.financial_agent = None
         self.technical_agent = None
-        self.llm = None
+        self.llm_conf = None
         self.prefilter = None
         self.lead_agent_mode = "llm_reasoning"
         self.min_confidence = 5.0
@@ -96,13 +108,16 @@ class Config:
         self.output_dir = "outputs"
         self.timestamp_format = "%Y-%m-%d_%H-%M-%S"
         self.anthropic_api_key = ""
+        self.groq_api_key = ""
         self.newsapi_key = ""
         self.finnhub_key = ""
         self.tickers_url_source = None
+        self.funnel: FunnelConfig = FunnelConfig()
 
     def _parse(self, raw: dict) -> None:
         """Parse raw YAML dict into typed config."""
         self.start_time = time.time()
+        self.debug_n_stocks = raw.get('debug_n_stocks', 5000)
         # Market
         market = raw.get("market", {})
         self.universe = market.get("universe", "sp500")
@@ -121,15 +136,53 @@ class Config:
         self.financial_agent = self._parse_agent(agents.get("financial", {}))
         self.technical_agent = self._parse_agent(agents.get("technical", {}))
 
-        # LLM
+        # API Keys — only require the active provider's key
+        keys = raw.get("api_keys", {})
         llm = raw.get("llm", {})
-        self.llm = LLMConfig(
-            provider=llm.get("provider", "anthropic"),
-            model=llm.get("model", "claude-sonnet-4-20250514"),
+        provider = llm.get("provider", "groq")
+
+        if provider == "anthropic":
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+            if not anthropic_key:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY environment variable is required when llm.provider is 'anthropic'"
+                )
+            self.anthropic_api_key = anthropic_key
+            active_api_key = self.anthropic_api_key
+        elif provider == "groq":
+            groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+            if not groq_key:
+                raise ValueError(
+                    "GROQ_API_KEY environment variable is required when llm.provider is 'groq'"
+                )
+            self.groq_api_key = groq_key
+            active_api_key = self.groq_api_key
+        else:
+            raise ValueError(f"Unsupported llm.provider in config: '{provider}'")
+
+        self.newsapi_key = keys.get("newsapi", "")
+        self.finnhub_key = keys.get("finnhub", "")
+
+        # LLM
+        self.llm_conf = LLMConfig(
+            provider=provider,
+            model=llm.get("model", "llama-3.3-70b-versatile"),
             max_tokens=llm.get("max_tokens", 2000),
             temperature=llm.get("temperature", 0.3),
             max_daily_api_calls=llm.get("max_daily_api_calls", 500),
             max_cost_per_run_usd=llm.get("max_cost_per_run_usd", 5.0),
+            api_key=active_api_key,
+        )
+
+        # Funnel
+        fn = raw.get("funnel", {})
+        self.funnel = FunnelConfig(
+            round1_batch_size=fn.get("round1_batch_size", 15),
+            round2_batch_size=fn.get("round2_batch_size", 10),
+            round3_batch_size=fn.get("round3_batch_size", 5),
+            round1_keep_rate=fn.get("round1_keep_rate", 0.50),
+            round2_keep_rate=fn.get("round2_keep_rate", 0.50),
+            round3_keep_rate=fn.get("round3_keep_rate", 0.50),
         )
 
         # Prefilter
@@ -156,12 +209,6 @@ class Config:
         self.output_dir = output.get("save_dir", "outputs")
         self.timestamp_format = output.get("timestamp_format", "%Y-%m-%d_%H-%M-%S")
 
-        # API Keys (resolve env vars)
-        keys = raw.get("api_keys", {})
-        self.anthropic_api_key = self._resolve_env(keys.get("anthropic", ""))
-        self.newsapi_key = self._resolve_env(keys.get("newsapi", ""))
-        self.finnhub_key = self._resolve_env(keys.get("finnhub", ""))
-
     def _parse_agent(self, agent_dict: dict) -> AgentConfig:
         """Parse a single agent config section."""
         return AgentConfig(
@@ -173,14 +220,6 @@ class Config:
             metrics=agent_dict.get("metrics", []),
             indicators=agent_dict.get("indicators", []),
         )
-
-    @staticmethod
-    def _resolve_env(value: str) -> str:
-        """Resolve ${ENV_VAR} to actual environment variable value."""
-        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-            env_var = value[2:-1]
-            return os.environ.get(env_var, "")
-        return value
 
     def get_agent_weights(self) -> dict[str, float]:
         """Return normalized weights for enabled agents."""
