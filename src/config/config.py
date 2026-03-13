@@ -162,6 +162,9 @@ class Config:
         max_daily_api_calls = llm.get("max_daily_api_calls", 500)
         max_cost_per_run_usd = llm.get("max_cost_per_run_usd", 5.0)
 
+        import logging as _logging
+        _cfg_logger = _logging.getLogger(__name__)
+
         self.llm_chain = []
         for entry in raw_providers:
             provider = entry.get("provider", "groq")
@@ -169,9 +172,10 @@ class Config:
                 raise ValueError(f"Unsupported llm provider: '{provider}'. Supported: {sorted(_supported_providers)}")
             api_key = os.environ.get(_env_key_map[provider], "").strip()
             if not api_key:
-                raise ValueError(
-                    f"{_env_key_map[provider]} environment variable is required for provider '{provider}'"
+                _cfg_logger.warning(
+                    f"Skipping provider '{provider}': {_env_key_map[provider]} environment variable not set"
                 )
+                continue
             self.llm_chain.append(LLMConfig(
                 provider=provider,
                 model=entry.get("model", "llama-3.3-70b-versatile"),
@@ -183,7 +187,10 @@ class Config:
             ))
 
         if not self.llm_chain:
-            raise ValueError("llm.providers list is empty — at least one provider is required")
+            configured_keys = [_env_key_map[e.get("provider", "groq")] for e in raw_providers]
+            raise ValueError(
+                f"No LLM providers are available. Set at least one of: {', '.join(configured_keys)}"
+            )
 
         # Funnel
         fn = raw.get("funnel", {})
