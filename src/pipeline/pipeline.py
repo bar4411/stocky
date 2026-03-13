@@ -25,13 +25,10 @@ class StocksRecommenderPipeline(BasePipeline):
 
     def setup(self):
         """Re-initialize non-picklable resources after loading from saved state."""
-        if self.agents_manager is not None:
-            self.agents_manager = AgentsManager(config=self.config)
+        pass
 
     def tear_down(self):
-        """Release non-picklable resources before saving to pickle."""
-        if self.agents_manager is not None:
-            self.agents_manager = None
+        pass
 
     def fetch_tickers(self):
         self.data_fetcher = DataFetcher(self.config)
