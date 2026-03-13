@@ -48,6 +48,19 @@ class LLMClient:
         else:
             raise ValueError(f"Unsupported LLM provider: {config.provider}")
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Anthropic client holds httpx connection pools with _thread.RLock
+        # objects that cannot be pickled — exclude it and recreate on load.
+        state["client"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self.config.provider == "anthropic":
+            self.client = Anthropic()
+        else:
+            raise ValueError(f"Unsupported LLM provider: {self.config.provider}")
     def _do_api_call(
         self,
         temp: float,
